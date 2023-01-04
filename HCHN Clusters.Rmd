@@ -1,0 +1,520 @@
+---
+title: "XXXXX Patient Clusters"
+author: "Erica Smith"
+date: '2022-05-01'
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(data.table)
+library(dplyr)
+library(janitor)
+library(tidyr)
+library(openxlsx)
+library(Hmisc)
+library(corrplot)
+library(reshape2)
+library(ggplot2)
+library(DT)
+library(flextable)
+library(gridExtra)
+library(ggpubr)
+library(corrplot)
+library(stats)
+library(factoextra)
+library(stringr)
+library(gtsummary)
+
+options(scipen = 999)
+
+setwd(XXXXX)
+
+```
+
+## Data acquisition
+
+Downloaded .xlsx file from UB Box. Imported into R. Removed total line. 
+
+First 7 columns and 5 rows of the resulting dataframe:
+
+```{r jrdata, echo = FALSE}
+d <- fread('JR HNHC Report 10042021.csv')
+```
+
+```{r jrdata_df, echo = FALSE, warning = FALSE, fig.width=8,fig.height=5}
+flextable(head(d[,c(1:7)]))
+```
+## Data Cleaning
+
+Optimized variable names for analysis by setting them to all lower case, with no special characters, delimited by underscores. 
+
+```{r find_nulls, include = TRUE}
+d %>% 
+  clean_names() %>%
+  select(age,gender,appt_in_12mos,loc_number,language,race,ethnicity,
+         prim_ins,sec_ins,cardiovascular:number_of_yess) %>%
+  tbl_summary()
+```
+Filled all missing values in non-condition variables with "Unknown".
+
+```{r fill_nulls, include = FALSE}
+d2 <- d %>%
+  clean_names() %>%
+  mutate(language = ifelse(language == '','Unknown',language),
+         race = ifelse(race == '','Unknown',race),
+         ethnicity = ifelse(ethnicity == '','Unknown',ethnicity),
+         sec_ins = ifelse(sec_ins == '','Unknown',sec_ins))
+```
+
+## Data Exploration
+
+### Demographics
+```{r demo_plots, include = FALSE, warning = FALSE}
+age_plot <- ggplot(d2, aes(x=age)) + geom_histogram(bins = 10) + theme_classic() + xlab('Age') + ylab('Patient Count') + ggtitle('Histogram of Age')
+
+gender_plot <- d2 %>%
+  group_by(gender) %>%
+  summarise(ptcount = length(gender)) %>%
+  arrange(desc(ptcount)) %>%
+  ggplot(data=., aes(x=gender, y=ptcount)) +
+  geom_bar(stat="identity") +
+  ylim(0,2300) + 
+  theme_classic() +
+  geom_text(aes(label=ptcount), vjust=-0.3, size=3.5) +
+  xlab('Gender') +
+  ylab('Patient Count') +
+  ggtitle('Bar Plot of Gender')
+
+gender_plot
+
+lang_plot <- d2 %>%
+  group_by(language) %>%
+  summarise(ptcount = length(language)) %>%
+  arrange(desc(ptcount)) %>%
+  head(5) %>%
+  ggplot(data=., aes(x= reorder(language,-ptcount), y=ptcount)) +
+  geom_bar(stat="identity") +
+  ylim(0,1800) + 
+  theme_classic() +
+  geom_text(aes(label=ptcount), vjust=-0.3, size=3.5) +
+  xlab('Language') +
+  ylab('Patient Count') +
+  ggtitle('Bar Plot of top 5 Languages')
+
+lang_plot
+
+race_plot <- d2 %>%
+  group_by(race) %>%
+  summarise(ptcount = length(race)) %>%
+  arrange(desc(ptcount)) %>%
+  head(5) %>%
+  ggplot(data=., aes(x= reorder(race,-ptcount), y=ptcount)) +
+  geom_bar(stat="identity") +
+  ylim(0,1300) + 
+  theme_classic() +
+  geom_text(aes(label=ptcount), vjust=-0.3, size=3.5) +
+  xlab('Race') +
+  ylab('Patient Count') +
+  ggtitle('Bar Plot of top 5 Races')
+
+race_plot
+
+eth_plot <- d2 %>%
+  group_by(ethnicity) %>%
+  summarise(ptcount = length(ethnicity)) %>%
+  arrange(desc(ptcount)) %>%
+  head(5) %>%
+  ggplot(data=., aes(x= reorder(ethnicity,-ptcount), y=ptcount)) +
+  geom_bar(stat="identity") +
+  ylim(0,3200) + 
+  theme_classic() +
+  geom_text(aes(label=ptcount), vjust=-0.3, size=3.5) +
+  xlab('Ethnicity') +
+  ylab('Patient Count') +
+  ggtitle('Bar Plot of top 5 Ethnicities') +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  NULL
+
+eth_plot
+
+pins_plot <- d2 %>%
+  group_by(prim_ins) %>%
+  summarise(ptcount = length(prim_ins)) %>%
+  arrange(desc(ptcount)) %>%
+  head(5) %>%
+  ggplot(data=., aes(x= reorder(prim_ins,-ptcount), y=ptcount)) +
+  geom_bar(stat="identity") +
+  ylim(0,1000) + 
+  theme_classic() +
+  geom_text(aes(label=ptcount), vjust=-0.3, size=3.5) +
+  xlab('Primary Insurance') +
+  ylab('Patient Count') +
+  ggtitle('Bar Plot of top 5 Primary Insurance') +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  NULL
+
+pins_plot
+
+sins_plot <- d2 %>%
+  group_by(sec_ins) %>%
+  summarise(ptcount = length(sec_ins)) %>%
+  arrange(desc(ptcount)) %>%
+  head(5) %>%
+  ggplot(data=., aes(x= reorder(sec_ins,-ptcount), y=ptcount)) +
+  geom_bar(stat="identity") +
+  ylim(0,2800) + 
+  theme_classic() +
+  geom_text(aes(label=ptcount), vjust=-0.3, size=3.5) +
+  xlab('Secondary Insurance') +
+  ylab('Patient Count') +
+  ggtitle('Bar Plot of top 5 Secondary Insurance') +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  NULL
+
+sins_plot
+
+loc_plot <- d2 %>%
+  group_by(loc_number) %>%
+  summarise(ptcount = length(loc_number)) %>%
+  arrange(desc(ptcount)) %>%
+  ggplot(data=., aes(x= reorder(loc_number,-ptcount), y=ptcount)) +
+  geom_bar(stat="identity") +
+  ylim(0,2200) + 
+  theme_classic() +
+  geom_text(aes(label=ptcount), vjust=-0.3, size=3.5) +
+  xlab('Location') +
+  ylab('Patient Count') +
+  ggtitle('Bar Plot of Location') +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  NULL
+
+loc_plot
+```
+
+```{r demo_plot_output, echo = FALSE, warning= FALSE, fig.width=7,fig.height=9}
+ggarrange(age_plot,gender_plot,race_plot,eth_plot, ncol = 1, nrow = 4)
+
+ggarrange(lang_plot,loc_plot,pins_plot,sins_plot, ncol = 1, nrow = 4)
+```
+
+### Utilization
+```{r util_plots, include = FALSE, warning = FALSE}
+
+appt_plot <- d2 %>%
+  group_by(appt_in_12mos) %>%
+  summarise(ptcount = length(appt_in_12mos)) %>%
+  arrange(desc(ptcount)) %>%
+  ggplot(data=., aes(x= reorder(appt_in_12mos,-ptcount), y=ptcount)) +
+  geom_bar(stat="identity") +
+  theme_classic() +
+  geom_text(aes(label=ptcount), vjust=-0.3, size=3.5) +
+  xlab('Appt in 12 Months') +
+  ylab('Patient Count') +
+  ggtitle('Bar Plot of Appointment in 12 Months') +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  NULL
+
+appt_plot
+
+hospv_plot <- ggplot(d2, aes(x=hosp_visits)) + geom_boxplot() + theme_classic() + xlab('Hospital Visit Count') + ylab('Patient Count') + ggtitle('Boxplot of Hospital Visits') 
+
+hospv_plot
+
+hospv_nooutlier_plot <- d2 %>%
+  filter(hosp_visits < 312) %>%
+  ggplot(., aes(x=hosp_visits)) + 
+  geom_boxplot() + theme_classic() + 
+  xlab('Hospital Visit Count') + 
+  ylab('Patient Count') + 
+  ggtitle('Boxplot of Hospital Visits (w/o Outlier)') 
+
+hospv_nooutlier_plot
+
+hospv2_plot <- d2 %>%
+  group_by(x2_hosp_visits) %>%
+  summarise(ptcount = length(x2_hosp_visits)) %>%
+  arrange(desc(ptcount)) %>%
+  ggplot(data=., aes(x= reorder(x2_hosp_visits,-ptcount), y=ptcount)) +
+  geom_bar(stat="identity") +
+  theme_classic() +
+  geom_text(aes(label=ptcount), vjust=-0.3, size=3.5) +
+  xlab('2 or More Hospital Visits') +
+  ylab('Patient Count') +
+  ggtitle('Bar Plot of 2 or More Hospital Visits') +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  NULL
+
+hospv2_plot
+```
+
+```{r util_plot_output, echo = FALSE,fig.width=10,fig.height=11}
+
+ggarrange(appt_plot,hospv2_plot,hospv_plot,hospv_nooutlier_plot, ncol = 2, nrow = 2)
+
+```
+
+### Conditions
+```{r cond_plots, include = FALSE, warning = FALSE}
+
+cond <- d2 %>%
+  select(cardiovascular:developmental_disabilities) %>%
+  pivot_longer(cols = 1:21,
+               names_to = 'condition',
+               values_to = 'flag') %>%
+  mutate(flag = ifelse(flag == 'No',0,ifelse(flag == 'Yes',1,999))) %>%
+  group_by(condition) %>%
+  summarise(total_flags = sum(flag)) %>%
+  mutate(total_pts = nrow(d2)) %>%
+  mutate(prcnt_w_flag = round(total_flags / total_pts,2)) %>%
+  arrange(desc(prcnt_w_flag))
+
+cond1 <- head(cond,11)
+
+cond1_plot <- cond1 %>%
+  ggplot(data=., aes(x= reorder(condition,-prcnt_w_flag), y=prcnt_w_flag)) +
+  geom_bar(stat="identity") +
+  theme_classic() +
+  geom_text(aes(label=prcnt_w_flag), vjust=-0.3, size=3.5) +
+  xlab('Condition') +
+  ylab('% of Patients with Condition') +
+  ggtitle('Bar Plot of Condition Prevalence') +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  NULL
+
+cond1_plot
+
+cond2 <- tail(cond,10)
+
+cond2_plot <- cond2 %>%
+  ggplot(data=., aes(x= reorder(condition,-prcnt_w_flag), y=prcnt_w_flag)) +
+  geom_bar(stat="identity") +
+  theme_classic() +
+  geom_text(aes(label=prcnt_w_flag), vjust=-0.3, size=3.5) +
+  xlab('Condition') +
+  ylab('% of Patients with Condition') +
+  ggtitle('Bar Plot of Condition Prevalence') +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  NULL
+
+cond2_plot
+```
+
+```{r cond_plot_output, echo = FALSE, fig.width=10,fig.height=11}
+
+ggarrange(cond1_plot,cond2_plot,ncol = 1,nrow = 2)
+
+```
+
+### Risk
+
+```{r risk_plots, echo = FALSE, warning = FALSE}
+
+risk_plot <- ggplot(d2, aes(x=number_of_yess)) + 
+  geom_boxplot() + 
+  theme_classic() + 
+  xlab('# of Conditions') + 
+  ylab('Patient Count') + 
+  ggtitle('Boxplot of Condition Count')
+
+risk_plot
+```
+
+## Prepare Data for Analysis
+
+Recoded all condition variables to binary (1/0).
+
+Created dummy variables to collapse some data points:
+
+* female = If gender = 'Female' then 1 else 0
+* lang_diverse = If language = 'English' then 0 else 1
+* race_diverse = If race = 'White' then 0 else 1
+
+```{r prep_data, include = FALSE}
+
+d3 <- d2 %>%
+  mutate(female = ifelse(gender == 'Female',1,0)) %>%
+  mutate(lang_diverse = ifelse(language %in% c('English'),0,1)) %>%
+  mutate(race_diverse = ifelse(race %in% c('White'),0,1)) %>%
+  mutate_at(vars(cardiovascular:developmental_disabilities),recode, `Yes` = 1, `No` = 0) 
+
+```
+
+Created a correlation matrix to determine which variables are highly correlated.
+
+* Used female instead of gender
+* Used lang_diverse instead of language
+* Used race_diverse instead of race
+
+Excluded the following variables:
+
+* appt_in_12_months (always 'Yes')
+* appt_date (not relevant for correlation)
+* loc_number (classifier)
+* ethnicity (used race instead)
+* prim_ins and sec_ins (classifier)
+* 2+_hosp_visits (related to hosp_visits)
+* conditions where <= 3% of the population was flagged
+
+Made a matrix plot to visualize the correlations.
+
+### Correlation Matrix
+
+```{r corr_mtrx, include = FALSE}
+
+# Make a dataframe of all numeric variables
+matrix_data <- d3 %>%
+  select(age,female,lang_diverse,race_diverse,hypertension,childhood_illnesses,obesity,
+         chronic_pulmonary_disease,mental_health,hypothyroidism,diabetes,cardiovascular,
+         liver_disease,substance_use,renal_failure,hosp_visits,number_of_yess)
+
+# Create the correlation matrix
+corr_plot <- cor(matrix_data, use = 'complete.obs')
+```
+
+```{r correl_plot, echo = FALSE,fig.width=10,fig.height=11}
+
+corrplot(corr_plot, method = "color",type="upper",addCoef.col = "black",tl.col="black", tl.srt=90,number.cex=0.75)
+
+```
+
+## Clustering
+
+### Data Prep
+
+Performed cluster analysis to identify actionable cohorts for care coordination.  The dataset used to build a k-means cluster model was limited to patients with diabetes (diabetes = 1, n = 1233).  Only the following data points were included:
+
+* age
+* female
+* lang_diverse,
+* race_diverse,
+* condition flags found in at least 4% of the population (except diabetes)
+* hosp_visits
+* number_of_yess
+
+Data was scaled to normalize ranges between binary and continuous variables.
+
+### Optimal Number of Clusters
+The optimal number of clusters was estimated using the elbow method. This involves visualizing the percent of variation explained by the model given different numbers of clusters. The 'elbow' is the point where no additional clusters will make a positive improvement to the model.
+
+```{r cluster_data_prep, echo = FALSE}
+
+# Filter data
+cdata <- matrix_data %>%
+  filter(diabetes == 1) %>%
+  select(-diabetes)
+
+# Scale the data
+cdata2 <- scale(cdata)
+```
+
+```{r elbow_plot, echo = FALSE}
+# Figure out optimal number of clusters
+fviz_nbclust(cdata2, kmeans, nstart = 25, method = 'wss') + geom_vline(xintercept = 4, linetype = 1)
+
+```
+
+### Running the Model
+4 clusters were chosen as the optimal number for this model.
+
+Prior to running the algorithm, a set seed function was called to ensure the model output could be replicated in future runs.
+
+The k-means clustering algorithm was run using the seeded data and 4 clusters.  The following plot was produced to visualize the clusters.
+
+```{r cluster_do, include = FALSE}
+# Set seed for reproducibility
+set.seed(123)
+
+# Build the model
+km.res <- kmeans(cdata2,4, nstart = 25)
+```
+
+```{r view_clusters, echo = FALSE}
+# Visualize
+fviz_cluster(km.res, data = cdata2, geom = c('point'), ellipse.type = 'euclid', main = 'Diabetes patient clusters')
+
+```
+
+## Profiling the Cohorts
+
+After running the model, the cluster numbers were appended to the data set.  This allows for profiling of the patients in each cluster, using statistical techniques to understand how clusters are unique.
+
+In the heatmap table below, each variable used in the model were summarized to allow for comparison.
+
+* mean_age, hosp_visits, and number_of_yess are summarized as the mean for the cluster
+* the remaining variables are summarized as percentages (sum of flags / total patients)
+
+### Cohort Heatmap
+
+```{r profile_clusters, include = FALSE}
+
+# Join clusters to data
+cdata3 <- as.data.frame(cbind(cdata, cluster = km.res$cluster))
+
+# Identify traits
+traits <- cdata3 %>%
+  group_by(cluster) %>%
+  summarise(
+    across(c(race_diverse), ~n(), .names = "pt_count"),
+    across(c(age,number_of_yess,hosp_visits), ~mean(.x, na.rm = TRUE), .names = "mean_{.col}"),
+    across(c(female,hypertension:renal_failure,lang_diverse:race_diverse), ~sum(.x, na.rm = TRUE), .names = "sum_{.col}")
+  )
+
+# Transpose wide to long
+traitsT <- traits %>%
+  pivot_longer(cols = mean_age:sum_race_diverse,
+               names_to = 'variable',
+               values_to = 'value') %>%
+  mutate(metric = str_replace(variable,'sum_','')) %>%
+  mutate(final_value = ifelse(str_sub(variable,1,4) == 'mean',round(value,2),
+                              round(value/pt_count,2))) %>%
+  select(cluster,metric,final_value)
+
+# Transpose again to see traits across clusters
+traitsT2 <- traitsT %>%
+  pivot_wider(names_from = cluster,
+              values_from = final_value) 
+
+# Add patient count
+pt_counts <- traits %>%
+  select(cluster,pt_count) %>%
+  pivot_wider(names_from = cluster,
+              values_from = pt_count) %>%
+  mutate(metric = 'patient_count', .before = `1`)
+  
+
+traitsT2 <- rbind(pt_counts,traitsT2)
+
+```
+
+```{r heatmap_plot, echo = FALSE}
+
+ftab <- regulartable(traitsT2) %>% 
+    bg(j = 2, i = 1, part = "body", bg = "orange") %>%
+    bg(j = 5, i = 2, part = "body", bg = "orange") %>%
+    bg(j = 4, i = 3, part = "body", bg = "orange") %>%
+    bg(j = 4, i = 4, part = "body", bg = "orange") %>%
+    bg(j = 3, i = 5, part = "body", bg = "orange") %>%
+    bg(j = 5, i = 6, part = "body", bg = "orange") %>%
+    bg(j = 2, i = 7, part = "body", bg = "orange") %>%
+    bg(j = 3, i = 8, part = "body", bg = "orange") %>%
+    bg(j = 3, i = 9, part = "body", bg = "orange") %>%
+    bg(j = 4, i = 10, part = "body", bg = "orange") %>%
+    bg(j = 5, i = 11, part = "body", bg = "orange") %>%
+    bg(j = 4, i = 12, part = "body", bg = "orange") %>%
+    bg(j = 4, i = 13, part = "body", bg = "orange") %>%
+    bg(j = 4, i = 14, part = "body", bg = "orange") %>%
+    bg(j = 4, i = 15, part = "body", bg = "orange") %>%
+    bg(j = 2, i = 16, part = "body", bg = "orange") %>%
+    bg(j = 2, i = 17, part = "body", bg = "orange") 
+# Show the table
+ftab
+
+```
+
+
+## Conclusion
+
+The model only assigns each patient to a cluster number based on his or her similarity to other patients.  These machine-generated clusters must be evaluated and refined with the help of clinical subject matter experts. Cluster models provide an efficient way to perform baseline grouping of patients based on a variety of demographic, clinical, and socially-oriented data points.
+
